@@ -1,0 +1,8 @@
+*
+!/LICENSE
+!/README.md
+!/.gitignore
+!/src/
+!/src/CMakeLists.txt
+!/src/*.cpp
+!/src/*.hpp
