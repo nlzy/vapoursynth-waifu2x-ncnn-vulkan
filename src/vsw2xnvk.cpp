@@ -3,6 +3,7 @@
 #include <fstream>
 #include <thread>
 #include <atomic>
+#include <algorithm>
 
 #include "gpu.h"
 #include "waifu2x.h"
@@ -146,7 +147,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         g_filter_instance_count++;
     }
 
-    int gpuId, noise, scale, tileSize, gpuThread;
+    int gpuId, noise, scale, model, tileSize, gpuThread;
     std::string paramPath, modelPath;
     try {
         int err;
@@ -168,6 +169,10 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         if (scale != 1 && scale != 2)
             throw std::string{ "scale must be 1 or 2" };
 
+        model = int64ToIntS(vsapi->propGetInt(in, "model", 0, &err));
+        if (model < 0 || model > 2)
+            throw std::string{ "model must be 0, 1, 2" };
+
         tileSize = int64ToIntS(vsapi->propGetInt(in, "tile_size", 0, &err));
         if (err)
             tileSize = 180;
@@ -179,12 +184,24 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             gpuThread = 2;
         gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count));
 
-        d.vi.width *= scale;
-        d.vi.height *= scale;
+        if (scale == 1 && noise == -1)
+            throw std::string{ "noise can't be -1 when scale=1" };
+
+        if (scale == 1 && model != 2)
+            throw std::string{ "only cunet model support scale=1" };
 
         // set model path
-        const std::string pluginDir{ vsapi->getPluginPath(vsapi->getPluginById("net.nlzy.vsw2xnvk", core)) };
-        const std::string modelsDir{ pluginDir.substr(0, pluginDir.find_last_of('/')) + "/models/" };
+        const std::string pluginFilePath{ vsapi->getPluginPath(vsapi->getPluginById("net.nlzy.vsw2xnvk", core)) };
+        const std::string pluginDir = pluginFilePath.substr(0, pluginFilePath.find_last_of('/'));
+
+        std::string modelsDir;
+        if (model == 0)
+            modelsDir += pluginDir + "/models-upconv_7_anime_style_art_rgb/";
+        else if (model == 1)
+            modelsDir += pluginDir + "/models-upconv_7_photo/";
+        else
+            modelsDir += pluginDir + "/models-cunet/";
+
         std::string modelName;
         if (noise == -1)
             modelName = "scale2.0x_model";
@@ -215,6 +232,9 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         return;
     }
 
+    d.vi.width *= scale;
+    d.vi.height *= scale;
+
     {
         std::lock_guard<std::mutex> guard(g_lock);
 
@@ -227,7 +247,13 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         d.waifu2x->scale = scale;
         d.waifu2x->noise = noise;
         d.waifu2x->tilesize = tileSize;
-        d.waifu2x->prepadding = 7;
+        if (model == 2 && scale == 1)
+            d.waifu2x->prepadding = 28;
+        else if (model == 2)
+            d.waifu2x->prepadding = 18;
+        else
+            d.waifu2x->prepadding = 7;
+
 #if _WIN32
         std::wstring pp(paramPath.begin(), paramPath.end());
         std::wstring mp(modelPath.begin(), modelPath.end());
@@ -238,7 +264,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     }
 
 #if _WIN32
-    // HACK: vsapi->freeNode always crash on Windows if we don't sleep after model load
+    // HACK: vsapi->freeNode always crash on Windows if we don't sleep after model loaded
     Sleep(1000);
 #endif
 
@@ -255,6 +281,7 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
     registerFunc("Waifu2x", "clip:clip;"
                             "noise:int:opt;"
                             "scale:int:opt;"
+                            "model:int:opt;"
                             "tile_size:int:opt;"
                             "gpu_id:int:opt;"
                             "gpu_thread:int:opt;"
