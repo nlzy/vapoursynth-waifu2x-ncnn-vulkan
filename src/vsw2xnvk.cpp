@@ -86,25 +86,25 @@ static const VSFrameRef *VS_CC filterGetFrame(int n, int activationReason, void 
         return dst;
     }
 
-    return 0;
+    return nullptr;
 }
 
 static void VS_CC filterFree(void *instanceData, VSCore *core, const VSAPI *vsapi) {
     auto *d = static_cast<FilterData *>(instanceData);
-	vsapi->freeNode(d->node);
+    vsapi->freeNode(d->node);
     delete[] d->srcInterleaved;
     delete[] d->dstInterleaved;
     delete d->waifu2x;
-	delete d;
+    delete d;
 
     std::lock_guard<std::mutex> guard(g_lock);
     g_filter_instance_count--;
-    if (g_filter_instance_count == 0) {
+    if (g_filter_instance_count == 0)
         ncnn::destroy_gpu_instance();
-    }
-    for (auto e : g_gpu_lock) {
+
+    for (auto e : g_gpu_lock)
         delete e.second;
-    }
+
     g_gpu_lock.clear();
 }
 
@@ -158,13 +158,13 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         const std::string pluginDir{ vsapi->getPluginPath(vsapi->getPluginById("net.nlzy.vsw2xnvk", core)) };
         const std::string modelsDir{ pluginDir.substr(0, pluginDir.find_last_of('/')) + "/models/" };
         std::string modelName;
-        if (noise == -1) {
+        if (noise == -1)
             modelName = "scale2.0x_model";
-        } else if (scale == 1) {
+        else if (scale == 1)
             modelName = "noise" + std::to_string(noise) + "_model";
-        } else{
+        else
             modelName = "noise" + std::to_string(noise) + "_scale2.0x_model";
-        }
+
         paramPath = modelsDir + modelName + ".param";
         modelPath = modelsDir + modelName + ".bin";
 
@@ -206,17 +206,17 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         d.waifu2x->tilesize = tileSize;
         d.waifu2x->prepadding = 7;
 #if _WIN32
-		std::wstring pp(paramPath.begin(), paramPath.end());
-		std::wstring mp(modelPath.begin(), modelPath.end());
-		d.waifu2x->load(pp, mp);
+        std::wstring pp(paramPath.begin(), paramPath.end());
+        std::wstring mp(modelPath.begin(), modelPath.end());
+        d.waifu2x->load(pp, mp);
 #else
-		d.waifu2x->load(paramPath, modelPath);
+        d.waifu2x->load(paramPath, modelPath);
 #endif
     }
 
 #if _WIN32
-	// HACK: vsapi->freeNode always crash on Windows if we don't sleep after model load
-	Sleep(1000);
+    // HACK: vsapi->freeNode always crash on Windows if we don't sleep after model load
+    Sleep(1000);
 #endif
 
     auto *data = new FilterData{ d };
@@ -234,5 +234,5 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                             "scale:int:opt;"
                             "tile_size:int:opt;"
                             "gpu_id:int:opt;"
-							, filterCreate, 0, plugin);
+                            , filterCreate, nullptr, plugin);
 }
