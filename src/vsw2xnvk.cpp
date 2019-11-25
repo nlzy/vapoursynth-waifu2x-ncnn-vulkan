@@ -1,23 +1,43 @@
 #include <map>
 #include <mutex>
 #include <fstream>
+#include <thread>
+#include <atomic>
 
 #include "gpu.h"
 #include "waifu2x.h"
 
 #include "VSHelper.h"
 
+class Semaphore {
+private:
+    std::atomic_int val;
+public:
+    explicit Semaphore(int init_value) : val(init_value) {
+    }
+    void wait() {
+        int e;
+        do {
+            while ((e = val.load()) <= 0) {
+                std::this_thread::yield();
+            }
+        } while (!val.compare_exchange_strong(e, e - 1));
+    }
+    void signal() {
+        val.fetch_add(1);
+    }
+};
+
 typedef struct {
     VSNodeRef *node;
     VSVideoInfo vi;
-    uint8_t *srcInterleaved, *dstInterleaved;
     Waifu2x *waifu2x;
-    std::mutex *gpuLock;
+    Semaphore *gpuSemaphore;
 } FilterData;
 
 static std::mutex g_lock{};
 static int g_filter_instance_count = 0;
-static std::map<int, std::mutex *> g_gpu_lock;
+static std::map<int, Semaphore *> g_gpu_semaphore;
 
 static bool filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS_RESTRICT d, const VSAPI *vsapi) noexcept {
     const int width = vsapi->getFrameWidth(src, 0);
@@ -28,24 +48,26 @@ static bool filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS
     auto *srcG = reinterpret_cast<const uint8_t *>(vsapi->getReadPtr(src, 1));
     auto *srcB = reinterpret_cast<const uint8_t *>(vsapi->getReadPtr(src, 2));
 
+    auto *srcInterleaved = new uint8_t[width * height * 3];
+    auto *dstInterleaved = new uint8_t[d->vi.width * d->vi.height * 3];
+
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             const int pos = (width * y + x) * 3;
-            d->srcInterleaved[pos + 0] = srcR[x];
-            d->srcInterleaved[pos + 1] = srcG[x];
-            d->srcInterleaved[pos + 2] = srcB[x];
+            srcInterleaved[pos + 0] = srcR[x];
+            srcInterleaved[pos + 1] = srcG[x];
+            srcInterleaved[pos + 2] = srcB[x];
         }
         srcR += srcStride;
         srcG += srcStride;
         srcB += srcStride;
     }
 
-    {
-        std::lock_guard<std::mutex> guard(*d->gpuLock);
-        ncnn::Mat inImage = ncnn::Mat(width, height, static_cast<void *>(d->srcInterleaved), static_cast<size_t>(3), 3);
-        ncnn::Mat outImage = ncnn::Mat(d->vi.width, d->vi.height, static_cast<void *>(d->dstInterleaved),static_cast<size_t>(3), 3);
-        d->waifu2x->process(inImage, outImage);
-    }
+    d->gpuSemaphore->wait();
+    ncnn::Mat inImage = ncnn::Mat(width, height, static_cast<void *>(srcInterleaved), static_cast<size_t>(3), 3);
+    ncnn::Mat outImage = ncnn::Mat(d->vi.width, d->vi.height, static_cast<void *>(dstInterleaved),static_cast<size_t>(3), 3);
+    d->waifu2x->process(inImage, outImage);
+    d->gpuSemaphore->signal();
 
     auto * VS_RESTRICT dstR = reinterpret_cast<uint8_t *>(vsapi->getWritePtr(dst, 0));
     auto * VS_RESTRICT dstG = reinterpret_cast<uint8_t *>(vsapi->getWritePtr(dst, 1));
@@ -54,14 +76,17 @@ static bool filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS
     for (int y = 0; y < d->vi.height; y++) {
         for (int x = 0; x < d->vi.width; x++) {
             const int pos = (d->vi.width * y + x) * 3;
-            dstR[x] = d->dstInterleaved[pos + 0];
-            dstG[x] = d->dstInterleaved[pos + 1];
-            dstB[x] = d->dstInterleaved[pos + 2];
+            dstR[x] = dstInterleaved[pos + 0];
+            dstG[x] = dstInterleaved[pos + 1];
+            dstB[x] = dstInterleaved[pos + 2];
         }
         dstR += dstStride;
         dstG += dstStride;
         dstB += dstStride;
     }
+
+    delete[] srcInterleaved;
+    delete[] dstInterleaved;
 
     return true;
 }
@@ -92,20 +117,18 @@ static const VSFrameRef *VS_CC filterGetFrame(int n, int activationReason, void 
 static void VS_CC filterFree(void *instanceData, VSCore *core, const VSAPI *vsapi) {
     auto *d = static_cast<FilterData *>(instanceData);
     vsapi->freeNode(d->node);
-    delete[] d->srcInterleaved;
-    delete[] d->dstInterleaved;
     delete d->waifu2x;
     delete d;
 
     std::lock_guard<std::mutex> guard(g_lock);
     g_filter_instance_count--;
-    if (g_filter_instance_count == 0)
+    if (g_filter_instance_count == 0) {
         ncnn::destroy_gpu_instance();
-
-    for (auto e : g_gpu_lock)
-        delete e.second;
-
-    g_gpu_lock.clear();
+        for (auto pair : g_gpu_semaphore) {
+            delete pair.second;
+        }
+        g_gpu_semaphore.clear();
+    }
 }
 
 static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
@@ -123,7 +146,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         g_filter_instance_count++;
     }
 
-    int gpuId, noise, scale, tileSize;
+    int gpuId, noise, scale, tileSize, gpuThread;
     std::string paramPath, modelPath;
     try {
         int err;
@@ -147,9 +170,14 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
 
         tileSize = int64ToIntS(vsapi->propGetInt(in, "tile_size", 0, &err));
         if (err)
-            tileSize = 240;
+            tileSize = 180;
         if (tileSize < 32)
             throw std::string{ "tile size must be greater than or equal to 32" };
+
+        gpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
+        if (err || gpuThread <= 0)
+            gpuThread = 2;
+        gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count));
 
         d.vi.width *= scale;
         d.vi.height *= scale;
@@ -174,11 +202,6 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         if (!pf.good() || !mf.good())
             throw std::string{ "can't open model file" };
 
-        // alloc buffer
-        d.srcInterleaved = new (std::nothrow) uint8_t[d.vi.width * d.vi.height * 3 / scale / scale];
-        d.dstInterleaved = new (std::nothrow) uint8_t[d.vi.width * d.vi.height * 3];
-        if (!d.srcInterleaved || !d.dstInterleaved)
-            throw std::string{ "malloc failure (srcInterleaved/dstInterleaved)" };
     } catch (std::string &err) {
         {
             std::lock_guard<std::mutex> guard(g_lock);
@@ -195,10 +218,10 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     {
         std::lock_guard<std::mutex> guard(g_lock);
 
-        if (!g_gpu_lock.count(gpuId))
-            g_gpu_lock.insert(std::pair<int, std::mutex *>(gpuId, new std::mutex));
+        if (!g_gpu_semaphore.count(gpuId))
+            g_gpu_semaphore.insert(std::pair<int, Semaphore *>(0, new Semaphore(gpuThread)));
 
-        d.gpuLock = g_gpu_lock.at(gpuId);
+        d.gpuSemaphore = g_gpu_semaphore.at(gpuId);
 
         d.waifu2x = new Waifu2x(gpuId);
         d.waifu2x->scale = scale;
@@ -234,5 +257,6 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                             "scale:int:opt;"
                             "tile_size:int:opt;"
                             "gpu_id:int:opt;"
+                            "gpu_thread:int:opt;"
                             , filterCreate, nullptr, plugin);
 }
