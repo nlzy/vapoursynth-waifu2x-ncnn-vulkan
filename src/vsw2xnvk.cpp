@@ -67,7 +67,11 @@ static bool filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS
     d->gpuSemaphore->wait();
     ncnn::Mat inImage = ncnn::Mat(width, height, static_cast<void *>(srcInterleaved), static_cast<size_t>(3), 3);
     ncnn::Mat outImage = ncnn::Mat(d->vi.width, d->vi.height, static_cast<void *>(dstInterleaved),static_cast<size_t>(3), 3);
-    d->waifu2x->process(inImage, outImage);
+    if (d->waifu2x->process(inImage, outImage)) {
+        delete[] srcInterleaved;
+        delete[] dstInterleaved;
+        return false;
+    }
     d->gpuSemaphore->signal();
 
     auto * VS_RESTRICT dstR = reinterpret_cast<uint8_t *>(vsapi->getWritePtr(dst, 0));
@@ -104,9 +108,14 @@ static const VSFrameRef *VS_CC filterGetFrame(int n, int activationReason, void 
         vsapi->requestFrameFilter(n, d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
         const VSFrameRef *src = vsapi->getFrameFilter(n, d->node, frameCtx);
-
         VSFrameRef * dst = vsapi->newVideoFrame(d->vi.format, d->vi.width, d->vi.height, src, core);
-        filter(src, dst, d, vsapi);
+
+        if (!filter(src, dst, d, vsapi)) {
+            vsapi->setFilterError("Waifu2x-NCNN-Vulkan: Waifu2x::process error. Do you have enough GPU memory?", frameCtx);
+            vsapi->freeFrame(src);
+            vsapi->freeFrame(dst);
+            return nullptr;
+        }
 
         vsapi->freeFrame(src);
         return dst;
