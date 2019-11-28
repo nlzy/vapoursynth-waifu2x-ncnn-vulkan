@@ -188,9 +188,12 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         if (tileSize < 32)
             throw std::string{ "tile size must be greater than or equal to 32" };
 
-        gpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
-        if (err || gpuThread <= 0)
-            gpuThread = 2;
+        int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
+        if (customGpuThread > 0) {
+            gpuThread = customGpuThread;
+        } else {
+            gpuThread = int64ToIntS(ncnn::get_gpu_info(gpuId).transfer_queue_count);
+        }
         gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count));
 
         if (scale == 1 && noise == -1)
