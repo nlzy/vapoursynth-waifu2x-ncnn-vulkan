@@ -26,8 +26,7 @@
 #include <map>
 #include <mutex>
 #include <fstream>
-#include <thread>
-#include <atomic>
+#include <condition_variable>
 #include <algorithm>
 
 #include "gpu.h"
@@ -37,20 +36,23 @@
 
 class Semaphore {
 private:
-    std::atomic_int val;
+    int val;
+    std::mutex mtx;
+    std::condition_variable cv;
 public:
     explicit Semaphore(int init_value) : val(init_value) {
     }
     void wait() {
-        int e;
-        do {
-            while ((e = val.load()) <= 0) {
-                std::this_thread::yield();
-            }
-        } while (!val.compare_exchange_strong(e, e - 1));
+        std::unique_lock<std::mutex> lock(mtx);
+        while (val <= 0) {
+            cv.wait(lock);
+        }
+        val--;
     }
     void signal() {
-        val.fetch_add(1);
+        std::lock_guard<std::mutex> guard(mtx);
+        val++;
+        cv.notify_one();
     }
 };
 
