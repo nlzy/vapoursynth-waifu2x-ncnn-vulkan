@@ -302,11 +302,6 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
 #endif
     }
 
-#if _WIN32
-    // HACK: vsapi->freeNode always crash on Windows if we don't sleep after model loaded
-    Sleep(1000);
-#endif
-
     auto *data = new FilterData{ d };
 
     vsapi->createFilter(in, out, "Waifu2x", filterInit, filterGetFrame, filterFree, fmParallel, 0, data, core);
