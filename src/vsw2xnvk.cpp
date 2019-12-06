@@ -1,7 +1,8 @@
 /*
   MIT License
 
-  Copyright (c) 2018-2019 HolyWu, NaLan ZeYu
+  Copyright (c) 2018-2019 HolyWu
+  Copyright (c) 2019 NaLan ZeYu
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
