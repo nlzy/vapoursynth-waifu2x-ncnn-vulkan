@@ -4,7 +4,7 @@ Waifu2x filter for VapourSynth, based on [waifu2x-ncnn-vulkan](https://github.co
 
 ## Install
 
-Download pre-built binaries and model files from [release page](https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan/releases). Uncompress and put into VapourSynth plugin folder.
+Download pre-built binaries and model files from [releases](https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan/releases). Uncompress and put into VapourSynth plugin folder.
 
 ## Usage
 
@@ -32,13 +32,13 @@ core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread])
 
 * gpu_id: gpu device to use (int >=0, default=0)
 
-* gpu_thread: Number of threads that can simultaneously access GPU (int >=1, default=0 for auto detect)
+* gpu_thread: number of threads that can simultaneously access GPU (int >=1, default=0 for auto detect)
 
 ## Performance Comparison
 
-Hardware: Ryzen 5 1600X + Radeon RX 580 2048SP
+### AMD graphics card
 
-Parameters:
+* Ryzen 5 1600X + Radeon RX 580 2048SP
 * vapoursynth-waifu2x-ncnn-vulkan: `core.w2xnvk.Waifu2x(last, noise=0, scale=2, gpu_thread=3)`
 * vapoursynth-waifu2x-w2xc: `core.w2xc.Waifu2x(last, noise=0, scale=2)`
 
@@ -46,3 +46,14 @@ Parameters:
 |---------------------------------|----------------|-------------|-------------|
 | vapoursynth-waifu2x-ncnn-vulkan |      3.282 fps |   1.848 fps |   0.822 fps |
 | vapoursynth-waifu2x-w2xc        |      0.744 fps |   0.435 fps |   0.199 fps |
+
+### NVIDIA graphics card
+
+* Ryzen 3 1400 + GeForce GTX 1050 Ti
+* vapoursynth-waifu2x-ncnn-vulkan: `core.w2xnvk.Waifu2x(last, noise=0, scale=2, model=0)`
+* vapoursynth-waifu2x-caffe: `core.caffe.Waifu2x(last, noise=0, scale=2, model=3)`
+
+|                                 |  540p -> 1080p |  720p -> 2K | 1080p -> 4K |
+|---------------------------------|----------------|-------------|-------------|
+| vapoursynth-waifu2x-ncnn-vulkan |      1.759 fps |   1.003 fps |   0.455 fps |
+| vapoursynth-waifu2x-caffe       |      1.674 fps |   1.085 fps |   0.477 fps |
