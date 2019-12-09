@@ -278,7 +278,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         std::lock_guard<std::mutex> guard(g_lock);
 
         if (!g_gpu_semaphore.count(gpuId))
-            g_gpu_semaphore.insert(std::pair<int, Semaphore *>(0, new Semaphore(gpuThread)));
+            g_gpu_semaphore.insert(std::pair<int, Semaphore *>(gpuId, new Semaphore(gpuThread)));
 
         d.gpuSemaphore = g_gpu_semaphore.at(gpuId);
 
