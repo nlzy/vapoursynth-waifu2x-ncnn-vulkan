@@ -57,3 +57,39 @@ core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread])
 |---------------------------------|----------------|-------------|-------------|
 | vapoursynth-waifu2x-ncnn-vulkan |      1.759 fps |   1.003 fps |   0.455 fps |
 | vapoursynth-waifu2x-caffe       |      1.674 fps |   1.085 fps |   0.477 fps |
+
+## Build
+
+### Arch Linux
+
+Dependencies: base-devel cmake git vapoursynth glslang vulkan-icd-loader vulkan-headers
+
+```bash
+mkdir /tmp/workspace
+
+# build ncnn
+cd /tmp/workspace
+git clone https://github.com/Tencent/ncnn.git
+mkdir ncnn/build && cd ncnn/build
+cmake -DCMAKE_INSTALL_PREFIX=./install -DNCNN_VULKAN=ON -DNCNN_OPENMP=OFF ..
+make && make install
+
+# build waifu2x-ncnn-vulkan
+cd /tmp/workspace
+git clone https://github.com/Nlzy/waifu2x-ncnn-vulkan.git
+mkdir waifu2x-ncnn-vulkan/src/build && cd waifu2x-ncnn-vulkan/src/build
+cmake -DCMAKE_INSTALL_PREFIX=./install -Dncnn_DIR=/tmp/workspace/ncnn/build/install/lib/cmake/ncnn ..
+make && make install
+
+# build vapoursynth-waifu2x-ncnn-vulkan
+cd /tmp/workspace
+git clone https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan.git
+mkdir vapoursynth-waifu2x-ncnn-vulkan/src/build
+cd vapoursynth-waifu2x-ncnn-vulkan/src/build
+cmake -DCMAKE_INSTALL_PREFIX=./install -Dncnn_DIR=/tmp/workspace/ncnn/build/install/lib/cmake/ncnn -Dw2xnvk_DIR=/tmp/workspace/waifu2x-ncnn-vulkan/src/build/install/lib/w2xnvk ..
+make
+```
+
+### Windows
+
+TODO.
