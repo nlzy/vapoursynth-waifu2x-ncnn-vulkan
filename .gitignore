@@ -6,3 +6,4 @@
 !/src/CMakeLists.txt
 !/src/*.cpp
 !/src/*.hpp
+!/src/*.comp
