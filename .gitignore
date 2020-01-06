@@ -3,7 +3,7 @@
 !/README.md
 !/.gitignore
 !/src/
-!/src/CMakeLists.txt
+!/CMakeLists.txt
 !/src/*.cpp
 !/src/*.hpp
 !/src/*.comp

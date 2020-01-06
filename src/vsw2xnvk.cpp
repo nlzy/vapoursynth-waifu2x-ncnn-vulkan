@@ -2,7 +2,7 @@
   MIT License
 
   Copyright (c) 2018-2019 HolyWu
-  Copyright (c) 2019 NaLan ZeYu
+  Copyright (c) 2019-2020 NaLan ZeYu
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,7 @@
 #include <algorithm>
 
 #include "gpu.h"
-#include "waifu2x.h"
+#include "waifu2x.hpp"
 
 #include "VSHelper.h"
 
@@ -68,57 +68,20 @@ static int g_filter_instance_count = 0;
 static std::map<int, Semaphore *> g_gpu_semaphore;
 
 static bool filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS_RESTRICT d, const VSAPI *vsapi) noexcept {
-    const int width = vsapi->getFrameWidth(src, 0);
-    const int height = vsapi->getFrameHeight(src, 0);
-    const int srcStride = vsapi->getStride(src, 0) / static_cast<int>(sizeof(uint8_t));
-    const int dstStride = vsapi->getStride(dst, 0) / static_cast<int>(sizeof(uint8_t));
-    auto *srcR = reinterpret_cast<const uint8_t *>(vsapi->getReadPtr(src, 0));
-    auto *srcG = reinterpret_cast<const uint8_t *>(vsapi->getReadPtr(src, 1));
-    auto *srcB = reinterpret_cast<const uint8_t *>(vsapi->getReadPtr(src, 2));
-
-    auto *srcInterleaved = new uint8_t[width * height * 3];
-    auto *dstInterleaved = new uint8_t[d->vi.width * d->vi.height * 3];
-
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            const int pos = (width * y + x) * 3;
-            srcInterleaved[pos + 0] = srcR[x];
-            srcInterleaved[pos + 1] = srcG[x];
-            srcInterleaved[pos + 2] = srcB[x];
-        }
-        srcR += srcStride;
-        srcG += srcStride;
-        srcB += srcStride;
-    }
+    const int srcStride = vsapi->getStride(src, 0) / static_cast<int>(sizeof(float));
+    const int dstStride = vsapi->getStride(dst, 0) / static_cast<int>(sizeof(float));
+    auto *             srcR = reinterpret_cast<const float *>(vsapi->getReadPtr(src, 0));
+    auto *             srcG = reinterpret_cast<const float *>(vsapi->getReadPtr(src, 1));
+    auto *             srcB = reinterpret_cast<const float *>(vsapi->getReadPtr(src, 2));
+    auto * VS_RESTRICT dstR = reinterpret_cast<float *>(vsapi->getWritePtr(dst, 0));
+    auto * VS_RESTRICT dstG = reinterpret_cast<float *>(vsapi->getWritePtr(dst, 1));
+    auto * VS_RESTRICT dstB = reinterpret_cast<float *>(vsapi->getWritePtr(dst, 2));
 
     d->gpuSemaphore->wait();
-    ncnn::Mat inImage = ncnn::Mat(width, height, static_cast<void *>(srcInterleaved), static_cast<size_t>(3), 3);
-    ncnn::Mat outImage = ncnn::Mat(d->vi.width, d->vi.height, static_cast<void *>(dstInterleaved),static_cast<size_t>(3), 3);
-    if (d->waifu2x->process(inImage, outImage)) {
-        delete[] srcInterleaved;
-        delete[] dstInterleaved;
+    if (d->waifu2x->process(srcR, srcG, srcB, dstR, dstG, dstB, srcStride, dstStride)) {
         return false;
     }
     d->gpuSemaphore->signal();
-
-    auto * VS_RESTRICT dstR = reinterpret_cast<uint8_t *>(vsapi->getWritePtr(dst, 0));
-    auto * VS_RESTRICT dstG = reinterpret_cast<uint8_t *>(vsapi->getWritePtr(dst, 1));
-    auto * VS_RESTRICT dstB = reinterpret_cast<uint8_t *>(vsapi->getWritePtr(dst, 2));
-
-    for (int y = 0; y < d->vi.height; y++) {
-        for (int x = 0; x < d->vi.width; x++) {
-            const int pos = (d->vi.width * y + x) * 3;
-            dstR[x] = dstInterleaved[pos + 0];
-            dstG[x] = dstInterleaved[pos + 1];
-            dstB[x] = dstInterleaved[pos + 2];
-        }
-        dstR += dstStride;
-        dstG += dstStride;
-        dstB += dstStride;
-    }
-
-    delete[] srcInterleaved;
-    delete[] dstInterleaved;
 
     return true;
 }
@@ -138,7 +101,7 @@ static const VSFrameRef *VS_CC filterGetFrame(int n, int activationReason, void 
         VSFrameRef * dst = vsapi->newVideoFrame(d->vi.format, d->vi.width, d->vi.height, src, core);
 
         if (!filter(src, dst, d, vsapi)) {
-            vsapi->setFilterError("Waifu2x-NCNN-Vulkan: Waifu2x::process error. Do you have enough GPU memory?", frameCtx);
+            vsapi->setFilterError("Waifu2x-NCNN-Vulkan: Waifu2x::process error. Do you have enough VRAM?", frameCtx);
             vsapi->freeFrame(src);
             vsapi->freeFrame(dst);
             return nullptr;
@@ -188,8 +151,8 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     try {
         int err;
 
-        if (!isConstantFormat(&d.vi) || d.vi.format->colorFamily != cmRGB || d.vi.format->sampleType != stInteger || d.vi.format->bitsPerSample != 8)
-            throw std::string{ "only constant RGB format and 8 bit integer input supported" };
+        if (!isConstantFormat(&d.vi) || d.vi.format->colorFamily != cmRGB || d.vi.format->sampleType != stFloat || d.vi.format->bitsPerSample != 32)
+            throw std::string{ "only constant RGB format and 32 bit float input supported" };
 
         gpuId = int64ToIntS(vsapi->propGetInt(in, "gpu_id", 0, &err));
         if (gpuId < 0 || gpuId >= ncnn::get_gpu_count())
@@ -214,6 +177,8 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             tileSize = 180;
         if (tileSize < 32)
             throw std::string{ "tile size must be greater than or equal to 32" };
+        if (tileSize % 4)
+            throw std::string{"tile size must be multiple of 4"};
 
         int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
         if (customGpuThread > 0) {
@@ -271,9 +236,6 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         return;
     }
 
-    d.vi.width *= scale;
-    d.vi.height *= scale;
-
     {
         std::lock_guard<std::mutex> guard(g_lock);
 
@@ -283,6 +245,8 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         d.gpuSemaphore = g_gpu_semaphore.at(gpuId);
 
         d.waifu2x = new Waifu2x(gpuId);
+        d.waifu2x->w = d.vi.width;
+        d.waifu2x->h = d.vi.height;
         d.waifu2x->scale = scale;
         d.waifu2x->noise = noise;
         d.waifu2x->tilesize = tileSize;
@@ -293,22 +257,16 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         else
             d.waifu2x->prepadding = 7;
 
-#if _WIN32
-        std::wstring pp(paramPath.begin(), paramPath.end());
-        std::wstring mp(modelPath.begin(), modelPath.end());
-        d.waifu2x->load(pp, mp);
-#else
         d.waifu2x->load(paramPath, modelPath);
-#endif
     }
+
+    d.vi.width *= scale;
+    d.vi.height *= scale;
 
     auto *data = new FilterData{ d };
 
     vsapi->createFilter(in, out, "Waifu2x", filterInit, filterGetFrame, filterFree, fmParallel, 0, data, core);
 }
-
-//////////////////////////////////////////
-// Init
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegisterFunction registerFunc, VSPlugin *plugin) {
     configFunc("net.nlzy.vsw2xnvk", "w2xnvk", "VapourSynth Waifu2x NCNN Vulkan Plugin", VAPOURSYNTH_API_VERSION, 1, plugin);
