@@ -146,7 +146,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         g_filter_instance_count++;
     }
 
-    int gpuId, noise, scale, model, tileSize, gpuThread;
+    int gpuId, noise, scale, model, tileSize, gpuThread, precision;
     std::string paramPath, modelPath;
     try {
         int err;
@@ -179,6 +179,12 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             throw std::string{ "tile size must be greater than or equal to 32" };
         if (tileSize % 4)
             throw std::string{"tile size must be multiple of 4"};
+
+        precision = int64ToIntS(vsapi->propGetInt(in, "precision", 0, &err));
+        if (err)
+            precision = 16;
+        if (precision != 16 && precision != 32)
+            throw std::string{ "precision must be 16 or 32" };
 
         int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
         if (customGpuThread > 0) {
@@ -244,7 +250,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
 
         d.gpuSemaphore = g_gpu_semaphore.at(gpuId);
 
-        d.waifu2x = new Waifu2x(gpuId);
+        d.waifu2x = new Waifu2x(gpuId, precision);
         d.waifu2x->w = d.vi.width;
         d.waifu2x->h = d.vi.height;
         d.waifu2x->scale = scale;
@@ -277,5 +283,6 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                             "tile_size:int:opt;"
                             "gpu_id:int:opt;"
                             "gpu_thread:int:opt;"
+                            "precision:int:opt;"
                             , filterCreate, nullptr, plugin);
 }

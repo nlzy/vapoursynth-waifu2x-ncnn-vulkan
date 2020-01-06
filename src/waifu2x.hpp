@@ -10,7 +10,7 @@
 class Waifu2x
 {
 public:
-    Waifu2x(int gpuid);
+    Waifu2x(int gpuid, int precision);
     ~Waifu2x();
     int load(const std::string& parampath, const std::string& modelpath);
     int process(const float *srcR, const float *srcG, const float *srcB, float *dstR, float *dstG, float *dstB, int srcStride, int dstStride) const;

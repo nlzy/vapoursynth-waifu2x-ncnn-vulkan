@@ -47,10 +47,10 @@ static const uint32_t waifu2x_postproc_int8s_spv_data[] = {
     #include "waifu2x_postproc_int8s.spv.hex.h"
 };
 
-Waifu2x::Waifu2x(int gpuid) {
+Waifu2x::Waifu2x(int gpuid, int precision) {
     net.opt.use_vulkan_compute = true;
-    net.opt.use_fp16_packed = true;
-    net.opt.use_fp16_storage = true;
+    net.opt.use_fp16_packed = precision == 16;
+    net.opt.use_fp16_storage = precision == 16;
     net.opt.use_fp16_arithmetic = false;
     net.opt.use_int8_storage = false;
     net.opt.use_int8_arithmetic = false;
