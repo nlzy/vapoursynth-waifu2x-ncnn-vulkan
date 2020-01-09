@@ -9,43 +9,47 @@ Download pre-built binaries and model files from [releases](https://github.com/N
 ## Usage
 
 ```
-core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread])
+core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, precision])
 ```
 
-* clip: input clip. Only 8-bit RGB is supported.
+* clip: Input clip. Only 32-bit float RGB is supported.
 
-* noise: denoise level (int -1/0/1/2/3, defualt=0)
+* noise: Denoise level. (int -1/0/1/2/3, defualt=0)
   * -1 = none
   * 0 = low
   * 1 = medium
   * 2 = high
   * 3 = highest
 
-* scale: upscale ratio (int 1/2, default=2)
+* scale: Upscale ratio. (int 1/2, default=2)
+  * 1 = no scaling, denoise only. upconv_7 doesn't support this mode.
+  * 2 = upscale 2x.
 
-* model: model to use (int 0/1/2, default=0)
+* model: Model to use. (int 0/1/2, default=0)
   * 0 = upconv_7_anime_style_art_rgb
   * 1 = upconv_7_photo
-  * 2 = cunet (slow, but better quality)
+  * 2 = cunet (For 2D artwork. Slow, but better quality.)
 
-* tile_size: tile size (int >=32, default=180)
+* tile_size: Tile size. Must be divisible by 4. Increasing tile size will take more VRAM. (int >=32, default=180)
 
-* gpu_id: gpu device to use (int >=0, default=0)
+* gpu_id: GPU device to use. (int >=0, default=0)
 
-* gpu_thread: number of threads that can simultaneously access GPU (int >=1, default=0 for auto detect)
+* gpu_thread: Number of threads that can simultaneously access GPU. (int >=1, default=0 for auto detect)
+
+* precision: Floating-point precision. Single-precision (fp32) is slow but more precise in color. Default is half-precision (fp16). (int 16/32, default=16)
 
 ## Performance Comparison
 
 ### AMD graphics card
 
 * Ryzen 5 1600X + Radeon RX 580 2048SP
-* vapoursynth-waifu2x-ncnn-vulkan: `core.w2xnvk.Waifu2x(last, noise=0, scale=2, gpu_thread=3)`
+* vapoursynth-waifu2x-ncnn-vulkan: `core.w2xnvk.Waifu2x(last, noise=0, scale=2)`
 * vapoursynth-waifu2x-w2xc: `core.w2xc.Waifu2x(last, noise=0, scale=2)`
 
 |                                 |  540p -> 1080p |  720p -> 2K | 1080p -> 4K |
 |---------------------------------|----------------|-------------|-------------|
-| vapoursynth-waifu2x-ncnn-vulkan |      3.282 fps |   1.848 fps |   0.822 fps |
 | vapoursynth-waifu2x-w2xc        |      0.744 fps |   0.435 fps |   0.199 fps |
+| vapoursynth-waifu2x-ncnn-vulkan |      3.203 fps |   1.788 fps |   0.795 fps |
 
 ### NVIDIA graphics card
 
@@ -55,8 +59,8 @@ core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread])
 
 |                                 |  540p -> 1080p |  720p -> 2K | 1080p -> 4K |
 |---------------------------------|----------------|-------------|-------------|
-| vapoursynth-waifu2x-ncnn-vulkan |      1.759 fps |   1.003 fps |   0.455 fps |
 | vapoursynth-waifu2x-caffe       |      1.674 fps |   1.085 fps |   0.477 fps |
+| vapoursynth-waifu2x-ncnn-vulkan |      1.880 fps |   1.034 fps |   0.471 fps |
 
 ## Build
 
@@ -70,26 +74,14 @@ mkdir /tmp/workspace
 # build ncnn
 cd /tmp/workspace
 git clone https://github.com/Tencent/ncnn.git
-mkdir ncnn/build && cd ncnn/build
+cd ncnn && mkdir build && cd build
 cmake -DCMAKE_INSTALL_PREFIX=./install -DNCNN_VULKAN=ON -DNCNN_OPENMP=OFF ..
-make && make install
-
-# build waifu2x-ncnn-vulkan
-cd /tmp/workspace
-git clone https://github.com/Nlzy/waifu2x-ncnn-vulkan.git
-mkdir waifu2x-ncnn-vulkan/src/build && cd waifu2x-ncnn-vulkan/src/build
-cmake -DCMAKE_INSTALL_PREFIX=./install -Dncnn_DIR=/tmp/workspace/ncnn/build/install/lib/cmake/ncnn ..
 make && make install
 
 # build vapoursynth-waifu2x-ncnn-vulkan
 cd /tmp/workspace
 git clone https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan.git
-mkdir vapoursynth-waifu2x-ncnn-vulkan/src/build
-cd vapoursynth-waifu2x-ncnn-vulkan/src/build
-cmake -DCMAKE_INSTALL_PREFIX=./install -Dncnn_DIR=/tmp/workspace/ncnn/build/install/lib/cmake/ncnn -Dw2xnvk_DIR=/tmp/workspace/waifu2x-ncnn-vulkan/src/build/install/lib/w2xnvk ..
+cd vapoursynth-waifu2x-ncnn-vulkan && mkdir build && cd build
+cmake -Dncnn_DIR=/tmp/workspace/ncnn/build/install/lib/cmake/ncnn ..
 make
 ```
-
-### Windows
-
-TODO.
