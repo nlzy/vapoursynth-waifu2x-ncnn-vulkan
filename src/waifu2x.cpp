@@ -134,7 +134,7 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
 
     for (int yi = 0; yi < ytiles; yi++) {
         const int in_tile_y0 = std::max(yi * TILE_SIZE_Y - prepadding, 0);
-        const int in_tile_y1 = std::min((yi + 1) * TILE_SIZE_Y + prepadding_bottom, h);
+        const int in_tile_y1 = std::min((yi + 1) * TILE_SIZE_Y + (yi == ytiles - 1 ? prepadding_bottom : prepadding), h);
         const int in_tile_w = w;
         const int in_tile_h = in_tile_y1 - in_tile_y0;
 
@@ -182,9 +182,9 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
             {
                 // crop tile
                 int tile_x0 = xi * TILE_SIZE_X;
-                int tile_x1 = std::min((xi + 1) * TILE_SIZE_X, w) + prepadding + prepadding_right;
+                int tile_x1 = std::min((xi + 1) * TILE_SIZE_X, w) + prepadding + (xi == xtiles - 1 ? prepadding_right : prepadding);
                 int tile_y0 = yi * TILE_SIZE_Y;
-                int tile_y1 = std::min((yi + 1) * TILE_SIZE_Y, h) + prepadding + prepadding_bottom;
+                int tile_y1 = std::min((yi + 1) * TILE_SIZE_Y, h) + prepadding + (yi == ytiles - 1 ? prepadding_bottom : prepadding);
 
                 in_tile_gpu.create(tile_x1 - tile_x0, tile_y1 - tile_y0, RGB_CHANNELS, sizeof(float), 1, blob_vkallocator);
 
