@@ -83,20 +83,20 @@ int Waifu2x::load(const std::string& parampath, const std::string& modelpath) {
         waifu2x_preproc = new ncnn::Pipeline(net.vulkan_device());
         waifu2x_preproc->set_optimal_local_size_xyz(32, 32, 3);
         if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-            waifu2x_preproc->create(waifu2x_preproc_int8s_spv_data, sizeof(waifu2x_preproc_int8s_spv_data), "waifu2x_preproc_int8s", specializations, 2, 9);
+            waifu2x_preproc->create(waifu2x_preproc_int8s_spv_data, sizeof(waifu2x_preproc_int8s_spv_data), specializations);
         else if (net.opt.use_fp16_storage)
-            waifu2x_preproc->create(waifu2x_preproc_fp16s_spv_data, sizeof(waifu2x_preproc_fp16s_spv_data), "waifu2x_preproc_fp16s", specializations, 2, 9);
+            waifu2x_preproc->create(waifu2x_preproc_fp16s_spv_data, sizeof(waifu2x_preproc_fp16s_spv_data), specializations);
         else
-            waifu2x_preproc->create(waifu2x_preproc_spv_data, sizeof(waifu2x_preproc_spv_data), "waifu2x_preproc", specializations, 2, 9);
+            waifu2x_preproc->create(waifu2x_preproc_spv_data, sizeof(waifu2x_preproc_spv_data), specializations);
 
         waifu2x_postproc = new ncnn::Pipeline(net.vulkan_device());
         waifu2x_postproc->set_optimal_local_size_xyz(32, 32, 3);
         if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-            waifu2x_postproc->create(waifu2x_postproc_int8s_spv_data, sizeof(waifu2x_postproc_int8s_spv_data), "waifu2x_postproc_int8s", specializations, 2, 8);
+            waifu2x_postproc->create(waifu2x_postproc_int8s_spv_data, sizeof(waifu2x_postproc_int8s_spv_data), specializations);
         else if (net.opt.use_fp16_storage)
-            waifu2x_postproc->create(waifu2x_postproc_fp16s_spv_data, sizeof(waifu2x_postproc_fp16s_spv_data), "waifu2x_postproc_fp16s", specializations, 2, 8);
+            waifu2x_postproc->create(waifu2x_postproc_fp16s_spv_data, sizeof(waifu2x_postproc_fp16s_spv_data), specializations);
         else
-            waifu2x_postproc->create(waifu2x_postproc_spv_data, sizeof(waifu2x_postproc_spv_data), "waifu2x_postproc", specializations, 2, 8);
+            waifu2x_postproc->create(waifu2x_postproc_spv_data, sizeof(waifu2x_postproc_spv_data), specializations);
     }
 
     return 0;
@@ -110,6 +110,11 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
 
     ncnn::VkAllocator* blob_vkallocator = net.vulkan_device()->acquire_blob_allocator();
     ncnn::VkAllocator* staging_vkallocator = net.vulkan_device()->acquire_staging_allocator();
+
+    ncnn::Option opt = net.opt;
+    opt.blob_vkallocator = blob_vkallocator;
+    opt.workspace_vkallocator = blob_vkallocator;
+    opt.staging_vkallocator = staging_vkallocator;
 
     // prepadding
     int prepadding_bottom = prepadding;
@@ -152,15 +157,12 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
 
         ncnn::VkCompute cmd(net.vulkan_device());
 
+        
+
         // upload
         ncnn::VkMat in_gpu;
         {
-            in_gpu.create_like(in, blob_vkallocator, staging_vkallocator);
-
-            in_gpu.prepare_staging_buffer();
-            in_gpu.upload(in);
-
-            cmd.record_upload(in_gpu);
+            cmd.record_upload(in, in_gpu, opt);
 
             if (xtiles > 1) {
                 cmd.submit_and_wait();
@@ -172,7 +174,7 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
         const int out_tile_y1 = std::min((yi + 1) * TILE_SIZE_Y, h);
 
         ncnn::VkMat out_gpu;
-        out_gpu.create(w * scale, (out_tile_y1 - out_tile_y0) * scale, RGB_CHANNELS, sizeof(float), blob_vkallocator, staging_vkallocator);
+        out_gpu.create(w * scale, (out_tile_y1 - out_tile_y0) * scale, RGB_CHANNELS, sizeof(float), blob_vkallocator);
 
         for (int xi = 0; xi < xtiles; xi++) {
             // preproc
@@ -184,7 +186,7 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
                 int tile_y0 = yi * TILE_SIZE_Y;
                 int tile_y1 = std::min((yi + 1) * TILE_SIZE_Y, h) + prepadding + prepadding_bottom;
 
-                in_tile_gpu.create(tile_x1 - tile_x0, tile_y1 - tile_y0, RGB_CHANNELS, sizeof(float), 1, blob_vkallocator, staging_vkallocator);
+                in_tile_gpu.create(tile_x1 - tile_x0, tile_y1 - tile_y0, RGB_CHANNELS, sizeof(float), 1, blob_vkallocator);
 
                 std::vector<ncnn::VkMat> bindings(2);
                 bindings[0] = in_gpu;
@@ -252,27 +254,22 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
 
         // download
         {
-            out_gpu.prepare_staging_buffer();
-            cmd.record_download(out_gpu);
-
+            ncnn::Mat out;
+            cmd.record_download(out_gpu, out, opt);
             cmd.submit_and_wait();
-        }
 
-        ncnn::Mat out;
-        out.create_like(out_gpu, net.opt.blob_allocator);
-        out_gpu.download(out);
-
-        const float *out_tile_r = out.channel(0);
-        const float *out_tile_g = out.channel(1);
-        const float *out_tile_b = out.channel(2);
-        float *dr = dstR + yi * TILE_SIZE_Y * scale * dstStride;
-        float *dg = dstG + yi * TILE_SIZE_Y * scale * dstStride;
-        float *db = dstB + yi * TILE_SIZE_Y * scale * dstStride;
-        for (int y = 0; y < out.h; y++) {
-            for (int x = 0; x < out.w; x++) {
-                dr[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_r[out.w * y + x] / 255.F));
-                dg[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_g[out.w * y + x] / 255.F));
-                db[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_b[out.w * y + x] / 255.F));
+            const float* out_tile_r = out.channel(0);
+            const float* out_tile_g = out.channel(1);
+            const float* out_tile_b = out.channel(2);
+            float* dr = dstR + yi * TILE_SIZE_Y * scale * dstStride;
+            float* dg = dstG + yi * TILE_SIZE_Y * scale * dstStride;
+            float* db = dstB + yi * TILE_SIZE_Y * scale * dstStride;
+            for (int y = 0; y < out.h; y++) {
+                for (int x = 0; x < out.w; x++) {
+                    dr[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_r[out.w * y + x] / 255.F));
+                    dg[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_g[out.w * y + x] / 255.F));
+                    db[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_b[out.w * y + x] / 255.F));
+                }
             }
         }
     }
