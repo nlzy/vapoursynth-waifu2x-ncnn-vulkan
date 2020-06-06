@@ -162,7 +162,7 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
         // upload
         ncnn::VkMat in_gpu;
         {
-            cmd.record_upload(in, in_gpu, opt);
+            cmd.record_clone(in, in_gpu, opt);
 
             if (xtiles > 1) {
                 cmd.submit_and_wait();
@@ -255,7 +255,7 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
         // download
         {
             ncnn::Mat out;
-            cmd.record_download(out_gpu, out, opt);
+            cmd.record_clone(out_gpu, out, opt);
             cmd.submit_and_wait();
 
             const float* out_tile_r = out.channel(0);
