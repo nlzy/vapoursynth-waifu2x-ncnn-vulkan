@@ -148,43 +148,61 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
 
     int gpuId, noise, scale, model, tileSize, gpuThread, precision;
     std::string paramPath, modelPath;
-    try {
+    char const * err_prompt = nullptr;
+
+    while (true) {
         int err;
 
-        if (!isConstantFormat(&d.vi) || d.vi.format->colorFamily != cmRGB || d.vi.format->sampleType != stFloat || d.vi.format->bitsPerSample != 32)
-            throw std::string{ "only constant RGB format and 32 bit float input supported" };
+        if (!isConstantFormat(&d.vi) || d.vi.format->colorFamily != cmRGB || d.vi.format->sampleType != stFloat || d.vi.format->bitsPerSample != 32) {
+            err_prompt = "only constant RGB format and 32 bit float input supported";
+            break;
+        }
 
         gpuId = int64ToIntS(vsapi->propGetInt(in, "gpu_id", 0, &err));
-        if (gpuId < 0 || gpuId >= ncnn::get_gpu_count())
-            throw std::string{"invaild gpu_id"};
+        if (gpuId < 0 || gpuId >= ncnn::get_gpu_count()) {
+            err_prompt = "invalid 'gpu_id'";
+            break;
+        }
 
         noise = int64ToIntS(vsapi->propGetInt(in, "noise", 0, &err));
-        if (noise < -1 || noise > 3)
-            throw std::string{ "noise must be -1, 0, 1, 2, or 3" };
+        if (noise < -1 || noise > 3) {
+            err_prompt = "'noise' must be -1, 0, 1, 2, or 3";
+            break;
+        }
 
         scale = int64ToIntS(vsapi->propGetInt(in, "scale", 0, &err));
         if (err)
             scale = 2;
-        if (scale != 1 && scale != 2)
-            throw std::string{ "scale must be 1 or 2" };
+        if (scale != 1 && scale != 2) {
+            err_prompt = "'scale' must be 1 or 2";
+            break;
+        }
 
         model = int64ToIntS(vsapi->propGetInt(in, "model", 0, &err));
-        if (model < 0 || model > 2)
-            throw std::string{ "model must be 0, 1, 2" };
+        if (model < 0 || model > 2) {
+            err_prompt = "'model' must be 0, 1 or 2";
+            break;
+        }
 
         tileSize = int64ToIntS(vsapi->propGetInt(in, "tile_size", 0, &err));
         if (err)
             tileSize = 180;
-        if (tileSize < 32)
-            throw std::string{ "tile size must be greater than or equal to 32" };
-        if (tileSize % 4)
-            throw std::string{"tile size must be multiple of 4"};
+        if (tileSize < 32) {
+            err_prompt = "'tile_size' must be greater than or equal to 32";
+            break;
+        }
+        if (tileSize % 4) {
+            err_prompt = "'tile_size' must be multiple of 4";
+            break;
+        }
 
         precision = int64ToIntS(vsapi->propGetInt(in, "precision", 0, &err));
         if (err)
             precision = 16;
-        if (precision != 16 && precision != 32)
-            throw std::string{ "precision must be 16 or 32" };
+        if (precision != 16 && precision != 32) {
+            err_prompt = "'precision' must be 16 or 32";
+            break;
+        }
 
         int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
         if (customGpuThread > 0) {
@@ -194,11 +212,15 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         }
         gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count));
 
-        if (scale == 1 && noise == -1)
-            throw std::string{ "noise can't be -1 when scale=1" };
+        if (scale == 1 && noise == -1) {
+            err_prompt = "use 'noise=-1' and 'scale=1' at same time is useless";
+            break;
+        }
 
-        if (scale == 1 && model != 2)
-            throw std::string{ "only cunet model support scale=1" };
+        if (scale == 1 && model != 2) {
+            err_prompt = "only cunet model support 'scale=1'";
+            break;
+        }
 
         // set model path
         const std::string pluginFilePath{ vsapi->getPluginPath(vsapi->getPluginById("net.nlzy.vsw2xnvk", core)) };
@@ -226,10 +248,15 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         // check model file readable
         std::ifstream pf(paramPath);
         std::ifstream mf(modelPath);
-        if (!pf.good() || !mf.good())
-            throw std::string{ "can't open model file" };
+        if (!pf.good() || !mf.good()) {
+            err_prompt = "can't open model file";
+            break;
+        }
 
-    } catch (std::string &err) {
+        break;
+    }
+
+    if (err_prompt) {
         {
             std::lock_guard<std::mutex> guard(g_lock);
 
@@ -237,7 +264,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             if (g_filter_instance_count == 0)
                 ncnn::destroy_gpu_instance();
         }
-        vsapi->setError(out, ("Waifu2x-NCNN-Vulkan: " + err).c_str());
+        vsapi->setError(out, (std::string{"Waifu2x-NCNN-Vulkan: "} + err_prompt).c_str());
         vsapi->freeNode(d.node);
         return;
     }
