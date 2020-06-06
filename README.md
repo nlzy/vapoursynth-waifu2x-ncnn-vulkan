@@ -66,22 +66,39 @@ core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, p
 
 ### Arch Linux
 
-Dependencies: base-devel cmake git vapoursynth glslang vulkan-icd-loader vulkan-headers
+```bash
+# Install Vulkan SDK and something else:
+sudo pacman -S vapoursynth glslang vulkan-icd-loader vulkan-headers
+
+# Clone repository and submodule
+git clone https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan.git
+cd vapoursynth-waifu2x-ncnn-vulkan
+git submodule update --init --recursive
+mkdir build
+cd build
+
+# build
+cmake ..
+cmake --build . -j 4
+```
+
+### Windows
+
+Install [Vulkan SDK](https://vulkan.lunarg.com/sdk/home).
+
+Open `Git Bash`, clone repository and submodule:
 
 ```bash
-mkdir /tmp/workspace
-
-# build ncnn
-cd /tmp/workspace
-git clone https://github.com/Tencent/ncnn.git
-cd ncnn && mkdir build && cd build
-cmake -DCMAKE_INSTALL_PREFIX=./install -DNCNN_VULKAN=ON -DNCNN_OPENMP=OFF ..
-make && make install
-
-# build vapoursynth-waifu2x-ncnn-vulkan
-cd /tmp/workspace
 git clone https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan.git
-cd vapoursynth-waifu2x-ncnn-vulkan && mkdir build && cd build
-cmake -Dncnn_DIR=/tmp/workspace/ncnn/build/install/lib/cmake/ncnn ..
-make
+cd vapoursynth-waifu2x-ncnn-vulkan
+git submodule update --init --recursive
+mkdir build
+```
+
+Open `Start Menu` -> `Visual Studio 2019` -> `x64 Native Tools Command Prompt for VS 2019`, then build:
+
+```
+cd C:\path\to\vapoursynth-waifu2x-ncnn-vulkan\build
+cmake -G "NMake Makefiles" -DVAPOURSYNTH_HEADER_DIR=C:\path\to\vapoursynth\sdk\include ..
+cmake --build .
 ```

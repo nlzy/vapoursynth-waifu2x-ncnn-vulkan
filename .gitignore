@@ -1,9 +1,1 @@
-*
-!/LICENSE
-!/README.md
-!/.gitignore
-!/src/
-!/CMakeLists.txt
-!/src/*.cpp
-!/src/*.hpp
-!/src/*.comp
+build/
