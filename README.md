@@ -98,7 +98,9 @@ mkdir build
 Open `Start Menu` -> `Visual Studio 2019` -> `x64 Native Tools Command Prompt for VS 2019`, then build:
 
 ```
-cd C:\path\to\vapoursynth-waifu2x-ncnn-vulkan\build
-cmake -G "NMake Makefiles" -DVAPOURSYNTH_HEADER_DIR=C:\path\to\vapoursynth\sdk\include ..
+cd X:\path_to_vapoursynth-waifu2x-ncnn-vulkan\build
+cmake -G "NMake Makefiles" -DVAPOURSYNTH_HEADER_DIR=X:\path_to_vapoursynth\sdk\include\vapoursynth ..
 cmake --build .
 ```
+
+Note: If you are using VapourSynth "Portable" version, use `-DVAPOURSYNTH_HEADER_DIR=X:\path_to_vapoursynth\sdk\include` instead.
