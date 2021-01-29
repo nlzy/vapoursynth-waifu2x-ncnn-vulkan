@@ -208,9 +208,9 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         if (customGpuThread > 0) {
             gpuThread = customGpuThread;
         } else {
-            gpuThread = int64ToIntS(ncnn::get_gpu_info(gpuId).transfer_queue_count);
+            gpuThread = int64ToIntS(ncnn::get_gpu_info(gpuId).transfer_queue_count());
         }
-        gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count));
+        gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count()));
 
         if (scale == 1 && noise == -1) {
             err_prompt = "use 'noise=-1' and 'scale=1' at same time is useless";
