@@ -23,51 +23,19 @@
   SOFTWARE.
 */
 
-#include <map>
-#include <mutex>
 #include <fstream>
-#include <condition_variable>
 #include <algorithm>
-
 #include "gpu.h"
 #include "waifu2x.hpp"
-
 #include "VSHelper.h"
-
-class Semaphore {
-private:
-    int val;
-    std::mutex mtx;
-    std::condition_variable cv;
-public:
-    explicit Semaphore(int init_value) : val(init_value) {
-    }
-    void wait() {
-        std::unique_lock<std::mutex> lock(mtx);
-        while (val <= 0) {
-            cv.wait(lock);
-        }
-        val--;
-    }
-    void signal() {
-        std::lock_guard<std::mutex> guard(mtx);
-        val++;
-        cv.notify_one();
-    }
-};
 
 typedef struct {
     VSNodeRef *node;
     VSVideoInfo vi;
     Waifu2x *waifu2x;
-    Semaphore *gpuSemaphore;
 } FilterData;
 
-static std::mutex g_lock{};
-static int g_filter_instance_count = 0;
-static std::map<int, Semaphore *> g_gpu_semaphore;
-
-static bool filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS_RESTRICT d, const VSAPI *vsapi) noexcept {
+static int filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS_RESTRICT d, const VSAPI *vsapi) noexcept {
     const int srcStride = vsapi->getStride(src, 0) / static_cast<int>(sizeof(float));
     const int dstStride = vsapi->getStride(dst, 0) / static_cast<int>(sizeof(float));
     auto *             srcR = reinterpret_cast<const float *>(vsapi->getReadPtr(src, 0));
@@ -76,14 +44,7 @@ static bool filter(const VSFrameRef *src, VSFrameRef *dst, FilterData * const VS
     auto * VS_RESTRICT dstR = reinterpret_cast<float *>(vsapi->getWritePtr(dst, 0));
     auto * VS_RESTRICT dstG = reinterpret_cast<float *>(vsapi->getWritePtr(dst, 1));
     auto * VS_RESTRICT dstB = reinterpret_cast<float *>(vsapi->getWritePtr(dst, 2));
-
-    d->gpuSemaphore->wait();
-    if (d->waifu2x->process(srcR, srcG, srcB, dstR, dstG, dstB, srcStride, dstStride)) {
-        return false;
-    }
-    d->gpuSemaphore->signal();
-
-    return true;
+    return d->waifu2x->process(srcR, srcG, srcB, dstR, dstG, dstB, srcStride, dstStride);
 }
 
 static void VS_CC filterInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
@@ -99,16 +60,16 @@ static const VSFrameRef *VS_CC filterGetFrame(int n, int activationReason, void 
     } else if (activationReason == arAllFramesReady) {
         const VSFrameRef *src = vsapi->getFrameFilter(n, d->node, frameCtx);
         VSFrameRef * dst = vsapi->newVideoFrame(d->vi.format, d->vi.width, d->vi.height, src, core);
-
-        if (!filter(src, dst, d, vsapi)) {
+        int err = filter(src, dst, d, vsapi);
+        if (err) {
             vsapi->setFilterError("Waifu2x-NCNN-Vulkan: Waifu2x::process error. Do you have enough VRAM?", frameCtx);
             vsapi->freeFrame(src);
             vsapi->freeFrame(dst);
             return nullptr;
+        } else {
+            vsapi->freeFrame(src);
+            return dst;
         }
-
-        vsapi->freeFrame(src);
-        return dst;
     }
 
     return nullptr;
@@ -119,39 +80,24 @@ static void VS_CC filterFree(void *instanceData, VSCore *core, const VSAPI *vsap
     vsapi->freeNode(d->node);
     delete d->waifu2x;
     delete d;
-
-    std::lock_guard<std::mutex> guard(g_lock);
-    g_filter_instance_count--;
-    if (g_filter_instance_count == 0) {
-        ncnn::destroy_gpu_instance();
-        for (auto pair : g_gpu_semaphore) {
-            delete pair.second;
-        }
-        g_gpu_semaphore.clear();
-    }
 }
 
 static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
     FilterData d{};
-
     d.node = vsapi->propGetNode(in, "clip", 0, nullptr);
     d.vi = *vsapi->getVideoInfo(d.node);
-
-    {
-        std::lock_guard<std::mutex> guard(g_lock);
-
-        if (g_filter_instance_count == 0)
-            ncnn::create_gpu_instance();
-
-        g_filter_instance_count++;
-    }
 
     int gpuId, noise, scale, model, tileSize, gpuThread, precision;
     std::string paramPath, modelPath;
     char const * err_prompt = nullptr;
-
-    while (true) {
+    do {
         int err;
+
+        err = ncnn::create_gpu_instance();
+        if (err) {
+            err_prompt = "create gpu instance failed";
+            break;
+        }
 
         if (!isConstantFormat(&d.vi) || d.vi.format->colorFamily != cmRGB || d.vi.format->sampleType != stFloat || d.vi.format->bitsPerSample != 32) {
             err_prompt = "only constant RGB format and 32 bit float input supported";
@@ -254,45 +200,23 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         }
 
         break;
-    }
+    } while (false);
 
     if (err_prompt) {
-        {
-            std::lock_guard<std::mutex> guard(g_lock);
-
-            g_filter_instance_count--;
-            if (g_filter_instance_count == 0)
-                ncnn::destroy_gpu_instance();
-        }
         vsapi->setError(out, (std::string{"Waifu2x-NCNN-Vulkan: "} + err_prompt).c_str());
         vsapi->freeNode(d.node);
         return;
     }
 
-    {
-        std::lock_guard<std::mutex> guard(g_lock);
+    int prepadding;
+    if (model == 2 && scale == 1)
+        prepadding = 28;
+    else if (model == 2)
+        prepadding = 18;
+    else
+        prepadding = 7;
 
-        if (!g_gpu_semaphore.count(gpuId))
-            g_gpu_semaphore.insert(std::pair<int, Semaphore *>(gpuId, new Semaphore(gpuThread)));
-
-        d.gpuSemaphore = g_gpu_semaphore.at(gpuId);
-
-        d.waifu2x = new Waifu2x(gpuId, precision);
-        d.waifu2x->w = d.vi.width;
-        d.waifu2x->h = d.vi.height;
-        d.waifu2x->scale = scale;
-        d.waifu2x->noise = noise;
-        d.waifu2x->tilesize = tileSize;
-        if (model == 2 && scale == 1)
-            d.waifu2x->prepadding = 28;
-        else if (model == 2)
-            d.waifu2x->prepadding = 18;
-        else
-            d.waifu2x->prepadding = 7;
-
-        d.waifu2x->load(paramPath, modelPath);
-    }
-
+    d.waifu2x = new Waifu2x(d.vi.width, d.vi.height, scale, tileSize, gpuId, gpuThread, precision, prepadding, paramPath, modelPath);
     d.vi.width *= scale;
     d.vi.height *= scale;
 

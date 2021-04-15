@@ -4,27 +4,54 @@
 #define RGB_CHANNELS 3
 
 #include <string>
+#include <mutex>
+#include <condition_variable>
 #include "net.h"
 #include "gpu.h"
 
 class Waifu2x
 {
 public:
-    Waifu2x(int gpuid, int precision);
+    Waifu2x(int width, int height, int scale, int tilesize, int gpuid, int gputhread,
+            int precision, int prepadding, const std::string& parampath, const std::string& modelpath);
     ~Waifu2x();
-    int load(const std::string& parampath, const std::string& modelpath);
-    int process(const float *srcR, const float *srcG, const float *srcB, float *dstR, float *dstG, float *dstB, int srcStride, int dstStride) const;
-public:
-    int w;
-    int h;
-    int noise;
+
+    int process(const float *srcR, const float *srcG, const float *srcB, float *dstR, float *dstG, float *dstB, ptrdiff_t srcStride, ptrdiff_t dstStride) const;
+
+private:
+    int width;
+    int height;
     int scale;
     int tilesize;
     int prepadding;
-private:
+
     ncnn::Net net;
     ncnn::Pipeline* waifu2x_preproc;
     ncnn::Pipeline* waifu2x_postproc;
+
+    class Semaphore {
+    private:
+        int val;
+        std::mutex mtx;
+        std::condition_variable cv;
+    public:
+        explicit Semaphore(int init_value) : val(init_value) {
+        }
+        void wait() {
+            std::unique_lock<std::mutex> lock(mtx);
+            while (val <= 0) {
+                cv.wait(lock);
+            }
+            val--;
+        }
+        void signal() {
+            std::lock_guard<std::mutex> guard(mtx);
+            val++;
+            cv.notify_one();
+        }
+    };
+
+    mutable Semaphore semaphore;
 };
 
 #endif
