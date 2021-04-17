@@ -58,17 +58,26 @@ static const VSFrameRef *VS_CC filterGetFrame(int n, int activationReason, void 
     if (activationReason == arInitial) {
         vsapi->requestFrameFilter(n, d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef *src = vsapi->getFrameFilter(n, d->node, frameCtx);
-        VSFrameRef * dst = vsapi->newVideoFrame(d->vi.format, d->vi.width, d->vi.height, src, core);
+        auto src = vsapi->getFrameFilter(n, d->node, frameCtx);
+        auto dst = vsapi->newVideoFrame(d->vi.format, d->vi.width, d->vi.height, src, core);
+
         int err = filter(src, dst, d, vsapi);
-        if (err) {
-            vsapi->setFilterError("Waifu2x-NCNN-Vulkan: Waifu2x::process error. Do you have enough VRAM?", frameCtx);
-            vsapi->freeFrame(src);
-            vsapi->freeFrame(dst);
-            return nullptr;
-        } else {
-            vsapi->freeFrame(src);
-            return dst;
+        switch (err) {
+            case Waifu2x::ERROR_OK:
+                vsapi->freeFrame(src);
+                return dst;
+            case Waifu2x::ERROR_EXTRACTOR:
+                vsapi->setFilterError("Waifu2x-NCNN-Vulkan: Waifu2x extractor error. Try to decrease tile_size or gpu_thread", frameCtx);
+                vsapi->freeFrame(src);
+                vsapi->freeFrame(dst);
+                return nullptr;
+            case Waifu2x::ERROR_DOWNLOAD:
+            case Waifu2x::ERROR_UPLOAD:
+            case Waifu2x::ERROR_SUBMIT:
+                vsapi->setFilterError("Waifu2x-NCNN-Vulkan: Waifu2x submit error. Try to decrease gpu_thread", frameCtx);
+                vsapi->freeFrame(src);
+                vsapi->freeFrame(dst);
+                return nullptr;
         }
     }
 

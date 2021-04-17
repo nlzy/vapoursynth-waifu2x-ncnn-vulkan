@@ -145,7 +145,9 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
             cmd.record_clone(tmp, in_gpu, opt);
 
             if (xtiles > 1) {
-                cmd.submit_and_wait();
+                if (cmd.submit_and_wait()) {
+                    return ERROR_UPLOAD;
+                }
                 cmd.reset();
             }
         }
@@ -196,7 +198,7 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
                 ex.input("Input1", in_tile_gpu);
 
                 if (ex.extract("Eltwise4", out_tile_gpu, cmd)) {
-                    return -1;
+                    return ERROR_EXTRACTOR;
                 }
             }
 
@@ -225,7 +227,9 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
             }
 
             if (xtiles > 1) {
-                cmd.submit_and_wait();
+                if (cmd.submit_and_wait()) {
+                    return ERROR_SUBMIT;
+                }
                 cmd.reset();
             }
         }
@@ -234,7 +238,9 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
         {
             ncnn::Mat out;
             cmd.record_clone(out_gpu, out, opt);
-            cmd.submit_and_wait();
+            if (cmd.submit_and_wait()) {
+                return ERROR_DOWNLOAD;
+            }
 
             const float* out_tile_r = out.channel(0);
             const float* out_tile_g = out.channel(1);
@@ -254,6 +260,6 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
 
     net.vulkan_device()->reclaim_blob_allocator(blob_vkallocator);
     net.vulkan_device()->reclaim_staging_allocator(staging_vkallocator);
-    semaphore.signal();
-    return 0;
+    semaphore.signal(); // release only when successful
+    return ERROR_OK;
 }

@@ -18,6 +18,14 @@ public:
 
     int process(const float *srcR, const float *srcG, const float *srcB, float *dstR, float *dstG, float *dstB, ptrdiff_t srcStride, ptrdiff_t dstStride) const;
 
+    enum {
+        ERROR_OK = 0,
+        ERROR_EXTRACTOR = -1,
+        ERROR_SUBMIT = -2,
+        ERROR_UPLOAD = -3,
+        ERROR_DOWNLOAD = -4
+    };
+
 private:
     int width;
     int height;
