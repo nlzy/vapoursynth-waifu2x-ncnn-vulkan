@@ -29,6 +29,25 @@
 #include "waifu2x.hpp"
 #include "VSHelper.h"
 
+static ncnn::Mutex instanceLock;
+static int instanceCounter = 0;
+
+static int tryCreateGpuInstance() {
+    ncnn::MutexLockGuard lg(instanceLock);
+    if (instanceCounter++ == 0) {
+        return ncnn::create_gpu_instance();
+    } else {
+        return 0;
+    }
+}
+
+static void tryDestoryGpuInstance() {
+    ncnn::MutexLockGuard lg(instanceLock);
+    if (--instanceCounter == 0) {
+        ncnn::destroy_gpu_instance();
+    }
+}
+
 typedef struct {
     VSNodeRef *node;
     VSVideoInfo vi;
@@ -89,6 +108,7 @@ static void VS_CC filterFree(void *instanceData, VSCore *core, const VSAPI *vsap
     vsapi->freeNode(d->node);
     delete d->waifu2x;
     delete d;
+    tryDestoryGpuInstance();
 }
 
 static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
@@ -102,7 +122,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     do {
         int err;
 
-        err = ncnn::create_gpu_instance();
+        err = tryCreateGpuInstance();
         if (err) {
             err_prompt = "create gpu instance failed";
             break;
@@ -214,6 +234,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     if (err_prompt) {
         vsapi->setError(out, (std::string{"Waifu2x-NCNN-Vulkan: "} + err_prompt).c_str());
         vsapi->freeNode(d.node);
+        tryDestoryGpuInstance();
         return;
     }
 
