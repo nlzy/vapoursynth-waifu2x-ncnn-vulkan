@@ -10,7 +10,6 @@ message(STATUS "Found glslangValidator: ${GLSLANGVALIDATOR_EXECUTABLE}")
 
 macro(compile_shader SHADER_SRC)
     set(SHADER_SRC_FULLPATH ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_SRC})
-
     get_filename_component(SHADER_SRC_NAME_WE ${SHADER_SRC} NAME_WE)
     set(SHADER_SPV_HEX_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_SRC_NAME_WE}.spv.hex.h)
     add_custom_command(
@@ -23,36 +22,6 @@ macro(compile_shader SHADER_SRC)
     )
     set_source_files_properties(${SHADER_SPV_HEX_FILE} PROPERTIES GENERATED TRUE)
     list(APPEND SHADER_SPV_HEX_FILES ${SHADER_SPV_HEX_FILE})
-
-    # fp16 storage
-    set(SHADER_fp16s_SRC_NAME_WE "${SHADER_SRC_NAME_WE}_fp16s")
-
-    set(SHADER_fp16s_SPV_HEX_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_fp16s_SRC_NAME_WE}.spv.hex.h)
-    add_custom_command(
-            OUTPUT ${SHADER_fp16s_SPV_HEX_FILE}
-            COMMAND ${GLSLANGVALIDATOR_EXECUTABLE}
-            ARGS -DNCNN_fp16_storage=1 -V -s -x -o ${SHADER_fp16s_SPV_HEX_FILE} ${SHADER_SRC_FULLPATH}
-            DEPENDS ${SHADER_SRC_FULLPATH}
-            COMMENT "Building SPIR-V module ${SHADER_fp16s_SRC_NAME_WE}.spv"
-            VERBATIM
-    )
-    set_source_files_properties(${SHADER_fp16s_SPV_HEX_FILE} PROPERTIES GENERATED TRUE)
-    list(APPEND SHADER_SPV_HEX_FILES ${SHADER_fp16s_SPV_HEX_FILE})
-
-    # int8 storage
-    set(SHADER_int8s_SRC_NAME_WE "${SHADER_SRC_NAME_WE}_int8s")
-
-    set(SHADER_int8s_SPV_HEX_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_int8s_SRC_NAME_WE}.spv.hex.h)
-    add_custom_command(
-            OUTPUT ${SHADER_int8s_SPV_HEX_FILE}
-            COMMAND ${GLSLANGVALIDATOR_EXECUTABLE}
-            ARGS -DNCNN_fp16_storage=1 -DNCNN_int8_storage=1 -V -s -x -o ${SHADER_int8s_SPV_HEX_FILE} ${SHADER_SRC_FULLPATH}
-            DEPENDS ${SHADER_SRC_FULLPATH}
-            COMMENT "Building SPIR-V module ${SHADER_int8s_SRC_NAME_WE}.spv"
-            VERBATIM
-    )
-    set_source_files_properties(${SHADER_int8s_SPV_HEX_FILE} PROPERTIES GENERATED TRUE)
-    list(APPEND SHADER_SPV_HEX_FILES ${SHADER_int8s_SPV_HEX_FILE})
 endmacro()
 
 # enable global link time optimization
@@ -169,8 +138,10 @@ add_subdirectory(deps/ncnn)
 
 # generate-spirv target
 set(SHADER_SPV_HEX_FILES)
-compile_shader(src/waifu2x_preproc.comp)
-compile_shader(src/waifu2x_postproc.comp)
+compile_shader(src/waifu2x_preproc_fp16.comp)
+compile_shader(src/waifu2x_preproc_fp32.comp)
+compile_shader(src/waifu2x_postproc_fp16.comp)
+compile_shader(src/waifu2x_postproc_fp32.comp)
 add_custom_target(generate-spirv DEPENDS ${SHADER_SPV_HEX_FILES})
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})

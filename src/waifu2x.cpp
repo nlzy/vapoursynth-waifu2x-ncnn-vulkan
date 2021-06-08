@@ -30,24 +30,20 @@
 #define DIV_CEIL(a, b) (((a) + (b) - 1) / (b))
 #define ALIGN_CEIL(a, b) (((a) + (b) - 1) / (b) * (b))
 
-static const uint32_t waifu2x_preproc_spv_data[] = {
-    #include "waifu2x_preproc.spv.hex.h"
+static const uint32_t waifu2x_preproc_fp32_spv_data[] = {
+    #include "waifu2x_preproc_fp32.spv.hex.h"
 };
-static const uint32_t waifu2x_preproc_fp16s_spv_data[] = {
-    #include "waifu2x_preproc_fp16s.spv.hex.h"
+static const uint32_t waifu2x_preproc_fp16_spv_data[] = {
+    #include "waifu2x_preproc_fp16.spv.hex.h"
 };
-static const uint32_t waifu2x_preproc_int8s_spv_data[] = {
-    #include "waifu2x_preproc_int8s.spv.hex.h"
+
+static const uint32_t waifu2x_postproc_fp32_spv_data[] = {
+    #include "waifu2x_postproc_fp32.spv.hex.h"
 };
-static const uint32_t waifu2x_postproc_spv_data[] = {
-    #include "waifu2x_postproc.spv.hex.h"
+static const uint32_t waifu2x_postproc_fp16_spv_data[] = {
+    #include "waifu2x_postproc_fp16.spv.hex.h"
 };
-static const uint32_t waifu2x_postproc_fp16s_spv_data[] = {
-    #include "waifu2x_postproc_fp16s.spv.hex.h"
-};
-static const uint32_t waifu2x_postproc_int8s_spv_data[] = {
-    #include "waifu2x_postproc_int8s.spv.hex.h"
-};
+
 
 Waifu2x::Waifu2x(int width, int height, int scale, int tilesize, int gpuid, int gputhread,
     int precision, int prepadding, const std::string& parampath, const std::string& modelpath) :
@@ -59,38 +55,24 @@ Waifu2x::Waifu2x(int width, int height, int scale, int tilesize, int gpuid, int 
     net.opt.use_fp16_arithmetic = false;
     net.opt.use_int8_storage = false;
     net.opt.use_int8_arithmetic = false;
-
     net.set_vulkan_device(gpuid);
     net.load_param(parampath.c_str());
     net.load_model(modelpath.c_str());
 
-    // initialize preprocess and postprocess pipeline
-    {
-        std::vector<ncnn::vk_specialization_type> specializations(1);
-#if _WIN32
-        specializations[0].i = 1;
-#else
-        specializations[0].i = 0;
-#endif
+    std::vector<ncnn::vk_specialization_type> specializations;
+    waifu2x_preproc = new ncnn::Pipeline(net.vulkan_device());
+    waifu2x_preproc->set_optimal_local_size_xyz(32, 32, 3);
+    if (net.opt.use_fp16_storage)
+        waifu2x_preproc->create(waifu2x_preproc_fp16_spv_data, sizeof(waifu2x_preproc_fp16_spv_data), specializations);
+    else
+        waifu2x_preproc->create(waifu2x_preproc_fp32_spv_data, sizeof(waifu2x_preproc_fp32_spv_data), specializations);
 
-        waifu2x_preproc = new ncnn::Pipeline(net.vulkan_device());
-        waifu2x_preproc->set_optimal_local_size_xyz(32, 32, 3);
-        if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-            waifu2x_preproc->create(waifu2x_preproc_int8s_spv_data, sizeof(waifu2x_preproc_int8s_spv_data), specializations);
-        else if (net.opt.use_fp16_storage)
-            waifu2x_preproc->create(waifu2x_preproc_fp16s_spv_data, sizeof(waifu2x_preproc_fp16s_spv_data), specializations);
-        else
-            waifu2x_preproc->create(waifu2x_preproc_spv_data, sizeof(waifu2x_preproc_spv_data), specializations);
-
-        waifu2x_postproc = new ncnn::Pipeline(net.vulkan_device());
-        waifu2x_postproc->set_optimal_local_size_xyz(32, 32, 3);
-        if (net.opt.use_fp16_storage && net.opt.use_int8_storage)
-            waifu2x_postproc->create(waifu2x_postproc_int8s_spv_data, sizeof(waifu2x_postproc_int8s_spv_data), specializations);
-        else if (net.opt.use_fp16_storage)
-            waifu2x_postproc->create(waifu2x_postproc_fp16s_spv_data, sizeof(waifu2x_postproc_fp16s_spv_data), specializations);
-        else
-            waifu2x_postproc->create(waifu2x_postproc_spv_data, sizeof(waifu2x_postproc_spv_data), specializations);
-    }
+    waifu2x_postproc = new ncnn::Pipeline(net.vulkan_device());
+    waifu2x_postproc->set_optimal_local_size_xyz(32, 32, 3);
+    if (net.opt.use_fp16_storage)
+        waifu2x_postproc->create(waifu2x_postproc_fp16_spv_data, sizeof(waifu2x_postproc_fp16_spv_data), specializations);
+    else
+        waifu2x_postproc->create(waifu2x_postproc_fp32_spv_data, sizeof(waifu2x_postproc_fp32_spv_data), specializations);
 }
 
 Waifu2x::~Waifu2x() {
@@ -135,11 +117,9 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
             const float* sg = srcG + in_tile_y0 * srcStride;
             const float* sb = srcB + in_tile_y0 * srcStride;
             for (int y = 0; y < in_tile_h; y++) {
-                for (int x = 0; x < in_tile_w; x++) {
-                    in_tile_r[in_tile_w * y + x] = sr[srcStride * y + x] * 255.F;
-                    in_tile_g[in_tile_w * y + x] = sg[srcStride * y + x] * 255.F;
-                    in_tile_b[in_tile_w * y + x] = sb[srcStride * y + x] * 255.F;
-                }
+                memcpy(in_tile_r + in_tile_w * y, sr + srcStride * y, sizeof(float) * in_tile_w);
+                memcpy(in_tile_g + in_tile_w * y, sg + srcStride * y, sizeof(float) * in_tile_w);
+                memcpy(in_tile_b + in_tile_w * y, sb + srcStride * y, sizeof(float) * in_tile_w);
             }
 
             cmd.record_clone(tmp, in_gpu, opt);
@@ -249,11 +229,9 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
             float* dg = dstG + yi * tilesize * scale * dstStride;
             float* db = dstB + yi * tilesize * scale * dstStride;
             for (int y = 0; y < out.h; y++) {
-                for (int x = 0; x < out.w; x++) {
-                    dr[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_r[out.w * y + x] / 255.F));
-                    dg[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_g[out.w * y + x] / 255.F));
-                    db[dstStride * y + x] = std::min(1.F, std::max(0.F, out_tile_b[out.w * y + x] / 255.F));
-                }
+                memcpy(dr + dstStride * y, out_tile_r + out.w * y, out.w * sizeof(float));
+                memcpy(dg + dstStride * y, out_tile_g + out.w * y, out.w * sizeof(float));
+                memcpy(db + dstStride * y, out_tile_b + out.w * y, out.w * sizeof(float));
             }
         }
     }
