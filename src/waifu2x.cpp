@@ -45,9 +45,9 @@ static const uint32_t waifu2x_postproc_fp16_spv_data[] = {
 };
 
 
-Waifu2x::Waifu2x(int width, int height, int scale, int tilesize, int gpuid, int gputhread,
+Waifu2x::Waifu2x(int width, int height, int scale, int tilesizew, int tilesizeh, int gpuid, int gputhread,
     int precision, int prepadding, const std::string& parampath, const std::string& modelpath) :
-    width(width), height(height), scale(scale), tilesize(tilesize), prepadding(prepadding), semaphore(gputhread)
+    width(width), height(height), scale(scale), tilesizew(tilesizew), tilesizeh(tilesizeh), prepadding(prepadding), semaphore(gputhread)
 {
     net.opt.use_vulkan_compute = true;
     net.opt.use_fp16_packed = precision == 16;
@@ -92,14 +92,14 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
     opt.workspace_vkallocator = blob_vkallocator;
     opt.staging_vkallocator = staging_vkallocator;
 
-    const int xtiles = DIV_CEIL(width, tilesize);
-    const int ytiles = DIV_CEIL(height, tilesize);
+    const int xtiles = DIV_CEIL(width, tilesizew);
+    const int ytiles = DIV_CEIL(height, tilesizeh);
 
     for (int yi = 0; yi < ytiles; yi++) {
         ncnn::VkCompute cmd(net.vulkan_device());
 
-        const int tile_nopad_y0 = yi * tilesize;
-        const int tile_nopad_y1 = std::min(tile_nopad_y0 + tilesize, height);
+        const int tile_nopad_y0 = yi * tilesizeh;
+        const int tile_nopad_y1 = std::min(tile_nopad_y0 + tilesizeh, height);
         const int tile_nopad_h = tile_nopad_y1 - tile_nopad_y0;
         const int prepadding_bottom = prepadding + PAD_TO_ALIGN(tile_nopad_h, 4 / scale);
         const int tile_pad_y0 = std::max(tile_nopad_y0 - prepadding, 0);
@@ -129,8 +129,8 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
         out_gpu.create(width * scale, tile_nopad_h * scale, RGB_CHANNELS, sizeof(float), blob_vkallocator);
 
         for (int xi = 0; xi < xtiles; xi++) {
-            const int tile_nopad_x0 = xi * tilesize;
-            const int tile_nopad_x1 = std::min(tile_nopad_x0 + tilesize, width);
+            const int tile_nopad_x0 = xi * tilesizew;
+            const int tile_nopad_x1 = std::min(tile_nopad_x0 + tilesizew, width);
             const int tile_nopad_w = tile_nopad_x1 - tile_nopad_x0;
             const int prepadding_right = prepadding + PAD_TO_ALIGN(tile_nopad_w, 4 / scale);
 
@@ -194,10 +194,10 @@ int Waifu2x::process(const float *srcR, const float *srcG, const float *srcB,
                 constants[4].i = out_gpu.h;
                 constants[5].i = out_gpu.cstep;
                 constants[6].i = tile_nopad_x0 * scale;
-                constants[7].i = std::min(out_gpu.w - tile_nopad_x0 * scale, tilesize * scale);
+                constants[7].i = std::min(out_gpu.w - tile_nopad_x0 * scale, tilesizew * scale);
 
                 ncnn::VkMat dispatcher;
-                dispatcher.w = std::min(out_gpu.w - tile_nopad_x0 * scale, tilesize * scale);
+                dispatcher.w = std::min(out_gpu.w - tile_nopad_x0 * scale, tilesizew * scale);
                 dispatcher.h = out_gpu.h;
                 dispatcher.c = RGB_CHANNELS;
 

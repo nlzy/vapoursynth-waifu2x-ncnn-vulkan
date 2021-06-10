@@ -9,7 +9,7 @@ Download pre-built binaries and model files from [releases](https://github.com/N
 ## Usage
 
 ```
-core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, precision])
+core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, precision, tile_size_w, tile_size_h])
 ```
 
 * clip: Input clip. Only 32-bit float RGB is supported.
@@ -37,6 +37,8 @@ core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, p
 * gpu_thread: Number of threads that can simultaneously access GPU. (int >=1, default=0 for auto detect)
 
 * precision: Floating-point precision. Single-precision (fp32) is slow but more precise in color. Default is half-precision (fp16). (int 16/32, default=16)
+
+* tile_size_w / tile_size_h: Override width and height of tile_size.
 
 ## Performance Comparison
 

@@ -116,7 +116,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     d.node = vsapi->propGetNode(in, "clip", 0, nullptr);
     d.vi = *vsapi->getVideoInfo(d.node);
 
-    int gpuId, noise, scale, model, tileSize, gpuThread, precision;
+    int gpuId, noise, scale, model, tileSizeW, tileSizeH, gpuThread, precision;
     std::string paramPath, modelPath;
     char const * err_prompt = nullptr;
     do {
@@ -159,8 +159,8 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             break;
         }
 
-        tileSize = int64ToIntS(vsapi->propGetInt(in, "tile_size", 0, &err));
-        if (err)
+        int tileSize = int64ToIntS(vsapi->propGetInt(in, "tile_size", 0, &err));
+        if (err) 
             tileSize = 180;
         if (tileSize < 32) {
             err_prompt = "'tile_size' must be greater than or equal to 32";
@@ -169,6 +169,33 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
         if (tileSize % 4) {
             err_prompt = "'tile_size' must be multiple of 4";
             break;
+        }
+        tileSizeW = tileSizeH = tileSize;
+
+        int tw = int64ToIntS(vsapi->propGetInt(in, "tile_size_w", 0, &err));
+        if (!err) {
+            if (tw < 32) {
+                err_prompt = "'tile_size_w' must be greater than or equal to 32";
+                break;
+            }
+            if (tw % 4) {
+                err_prompt = "'tile_size_w' must be multiple of 4";
+                break;
+            }
+            tileSizeW = tw;
+        }
+
+        int th = int64ToIntS(vsapi->propGetInt(in, "tile_size_h", 0, &err));
+        if (!err) {
+            if (th < 32) {
+                err_prompt = "'tile_size_h' must be greater than or equal to 32";
+                break;
+            }
+            if (th % 4) {
+                err_prompt = "'tile_size_h' must be multiple of 4";
+                break;
+            }
+            tileSizeH = th;
         }
 
         precision = int64ToIntS(vsapi->propGetInt(in, "precision", 0, &err));
@@ -246,7 +273,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     else
         prepadding = 7;
 
-    d.waifu2x = new Waifu2x(d.vi.width, d.vi.height, scale, tileSize, gpuId, gpuThread, precision, prepadding, paramPath, modelPath);
+    d.waifu2x = new Waifu2x(d.vi.width, d.vi.height, scale, tileSizeW, tileSizeH, gpuId, gpuThread, precision, prepadding, paramPath, modelPath);
     d.vi.width *= scale;
     d.vi.height *= scale;
 
@@ -265,5 +292,7 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                             "gpu_id:int:opt;"
                             "gpu_thread:int:opt;"
                             "precision:int:opt;"
+                            "tile_size_w:int:opt;"
+                            "tile_size_h:int:opt;"
                             , filterCreate, nullptr, plugin);
 }

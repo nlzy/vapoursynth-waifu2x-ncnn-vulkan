@@ -12,7 +12,7 @@
 class Waifu2x
 {
 public:
-    Waifu2x(int width, int height, int scale, int tilesize, int gpuid, int gputhread,
+    Waifu2x(int width, int height, int scale, int tilesizew, int tilesizeh, int gpuid, int gputhread,
             int precision, int prepadding, const std::string& parampath, const std::string& modelpath);
     ~Waifu2x();
 
@@ -30,7 +30,8 @@ private:
     int width;
     int height;
     int scale;
-    int tilesize;
+    int tilesizew;
+    int tilesizeh;
     int prepadding;
 
     ncnn::Net net;
