@@ -30,7 +30,7 @@ core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, p
   * 1 = upconv_7_photo
   * 2 = cunet (For 2D artwork. Slow, but better quality.)
 
-* tile_size: Tile size. Must be divisible by 4. Increasing tile size will take more VRAM. (int >=32, default=180)
+* tile_size: Tile size. Must be divisible by 4. Increasing this value may improve performance and take more VRAM. (int >=32, default=0 for auto choose)
 
 * gpu_id: GPU device to use. (int >=0, default=0)
 

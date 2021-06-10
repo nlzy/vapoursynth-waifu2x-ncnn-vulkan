@@ -159,9 +159,34 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             break;
         }
 
+        precision = int64ToIntS(vsapi->propGetInt(in, "precision", 0, &err));
+        if (err)
+            precision = 16;
+        if (precision != 16 && precision != 32) {
+            err_prompt = "'precision' must be 16 or 32";
+            break;
+        }
+
+        int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
+        if (customGpuThread > 0) {
+            gpuThread = customGpuThread;
+        }
+        else {
+            gpuThread = int64ToIntS(ncnn::get_gpu_info(gpuId).transfer_queue_count());
+        }
+        gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count()));
+
         int tileSize = int64ToIntS(vsapi->propGetInt(in, "tile_size", 0, &err));
-        if (err) 
-            tileSize = 180;
+        if (tileSize == 0) {
+            double vram = ncnn::get_gpu_device(gpuId)->get_heap_budget(); // in MByte
+            double factor = (precision == 32 ? 2 : 1) * (model == 2 ? 1.5 : 1) * gpuThread;
+            if (vram / factor > 900)
+                tileSize = 360;
+            else if (vram / factor > 450)
+                tileSize = 240;
+            else
+                tileSize = 180;
+        }
         if (tileSize < 32) {
             err_prompt = "'tile_size' must be greater than or equal to 32";
             break;
@@ -197,22 +222,6 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             }
             tileSizeH = th;
         }
-
-        precision = int64ToIntS(vsapi->propGetInt(in, "precision", 0, &err));
-        if (err)
-            precision = 16;
-        if (precision != 16 && precision != 32) {
-            err_prompt = "'precision' must be 16 or 32";
-            break;
-        }
-
-        int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
-        if (customGpuThread > 0) {
-            gpuThread = customGpuThread;
-        } else {
-            gpuThread = int64ToIntS(ncnn::get_gpu_info(gpuId).transfer_queue_count());
-        }
-        gpuThread = std::min(gpuThread, int64ToIntS(ncnn::get_gpu_info(gpuId).compute_queue_count()));
 
         if (scale == 1 && noise == -1) {
             err_prompt = "use 'noise=-1' and 'scale=1' at same time is useless";
