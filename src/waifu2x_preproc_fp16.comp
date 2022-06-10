@@ -35,5 +35,6 @@ void main()
     x = clamp(x, 0, p.w - 1);
     y = clamp(y, 0, p.h - 1);
 
-    top_blob_data[gz * p.outcstep + gy * p.outw + gx] = float16_t(bottom_blob_data[gz * p.cstep + y * p.w + x]);
+    float v = bottom_blob_data[gz * p.cstep + y * p.w + x];
+    top_blob_data[gz * p.outcstep + gy * p.outw + gx] = float16_t(clamp(v, 0.0, 1.0));
 }
