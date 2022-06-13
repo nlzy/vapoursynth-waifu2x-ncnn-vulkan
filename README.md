@@ -9,7 +9,7 @@ Download pre-built binaries and model files from [releases](https://github.com/N
 ## Usage
 
 ```
-core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, precision, tile_size_w, tile_size_h])
+core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, precision, tile_size_w, tile_size_h, tta])
 ```
 
 * clip: Input clip. Only 32-bit float RGB is supported.
@@ -40,39 +40,25 @@ core.w2xnvk.Waifu2x(clip[, noise, scale, model, tile_size, gpu_id, gpu_thread, p
 
 * tile_size_w / tile_size_h: Override width and height of tile_size.
 
-## Performance Comparison
-
-### AMD graphics card
-
-* Ryzen 5 1600X + Radeon RX 580 2048SP
-* vapoursynth-waifu2x-ncnn-vulkan: `core.w2xnvk.Waifu2x(last, noise=0, scale=2)`
-* vapoursynth-waifu2x-w2xc: `core.w2xc.Waifu2x(last, noise=0, scale=2)`
-
-|                                 |  540p -> 1080p |  720p -> 2K | 1080p -> 4K |
-|---------------------------------|----------------|-------------|-------------|
-| vapoursynth-waifu2x-w2xc        |      0.744 fps |   0.435 fps |   0.199 fps |
-| vapoursynth-waifu2x-ncnn-vulkan |      3.203 fps |   1.788 fps |   0.795 fps |
-
-### NVIDIA graphics card
-
-* Ryzen 3 1400 + GeForce GTX 1050 Ti
-* vapoursynth-waifu2x-ncnn-vulkan: `core.w2xnvk.Waifu2x(last, noise=0, scale=2, model=0)`
-* vapoursynth-waifu2x-caffe: `core.caffe.Waifu2x(last, noise=0, scale=2, model=3)`
-
-|                                 |  540p -> 1080p |  720p -> 2K | 1080p -> 4K |
-|---------------------------------|----------------|-------------|-------------|
-| vapoursynth-waifu2x-caffe       |      1.674 fps |   1.085 fps |   0.477 fps |
-| vapoursynth-waifu2x-ncnn-vulkan |      1.880 fps |   1.034 fps |   0.471 fps |
+* tta: TTA (test-time augmentation) mode. (bool True/False, default=False)
 
 ## Build
 
-### Arch Linux
+### Linux
+
+Install dependencies:
 
 ```bash
-# Install Vulkan SDK and something else:
+# Arch Linux
 sudo pacman -S vapoursynth glslang vulkan-icd-loader vulkan-headers
+# Fedora
+sudo dnf install vapoursynth-devel glslang vulkan-loader-devel vulkan-headers
+```
 
-# Clone repository and submodule
+Get source code and build:
+
+```bash
+# clone repository and submodule
 git clone https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan.git
 cd vapoursynth-waifu2x-ncnn-vulkan
 git submodule update --init --recursive
