@@ -13,7 +13,7 @@ class Waifu2x
 {
 public:
     Waifu2x(int width, int height, int scale, int tilesizew, int tilesizeh, int gpuid, int gputhread,
-            int precision, int prepadding, const std::string& parampath, const std::string& modelpath);
+            int precision, int tta, int prepadding, const std::string& parampath, const std::string& modelpath);
     ~Waifu2x();
 
     int process(const float *srcR, const float *srcG, const float *srcB, float *dstR, float *dstG, float *dstB, ptrdiff_t srcStride, ptrdiff_t dstStride) const;
@@ -33,6 +33,7 @@ private:
     int tilesizew;
     int tilesizeh;
     int prepadding;
+    int tta;
 
     ncnn::Net net;
     ncnn::Pipeline* waifu2x_preproc;

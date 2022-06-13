@@ -116,7 +116,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     d.node = vsapi->propGetNode(in, "clip", 0, nullptr);
     d.vi = *vsapi->getVideoInfo(d.node);
 
-    int gpuId, noise, scale, model, tileSizeW, tileSizeH, gpuThread, precision;
+    int gpuId, noise, scale, model, tileSizeW, tileSizeH, gpuThread, precision, tta;
     std::string paramPath, modelPath;
     char const * err_prompt = nullptr;
     do {
@@ -166,6 +166,12 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
             err_prompt = "'precision' must be 16 or 32";
             break;
         }
+
+        tta = int64ToIntS(vsapi->propGetInt(in, "tta", 0, &err));
+        if (err)
+            tta = 0;
+        if (tta != 0)
+            tta = 1;
 
         int customGpuThread = int64ToIntS(vsapi->propGetInt(in, "gpu_thread", 0, &err));
         if (customGpuThread > 0) {
@@ -282,7 +288,7 @@ static void VS_CC filterCreate(const VSMap *in, VSMap *out, void *userData, VSCo
     else
         prepadding = 7;
 
-    d.waifu2x = new Waifu2x(d.vi.width, d.vi.height, scale, tileSizeW, tileSizeH, gpuId, gpuThread, precision, prepadding, paramPath, modelPath);
+    d.waifu2x = new Waifu2x(d.vi.width, d.vi.height, scale, tileSizeW, tileSizeH, gpuId, gpuThread, precision, tta, prepadding, paramPath, modelPath);
     d.vi.width *= scale;
     d.vi.height *= scale;
 
@@ -303,5 +309,6 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                             "precision:int:opt;"
                             "tile_size_w:int:opt;"
                             "tile_size_h:int:opt;"
+                            "tta:int:opt;"
                             , filterCreate, nullptr, plugin);
 }
