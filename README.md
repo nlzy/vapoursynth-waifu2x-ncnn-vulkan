@@ -2,6 +2,12 @@
 
 Waifu2x filter for VapourSynth, based on [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan).
 
+## DEPRECATED
+
+**This plugin has been deprecated.**
+
+I recommend using [vs-mlrt](https://github.com/AmusementClub/vs-mlrt) instead, which offers broader model support, provides more inference framework options (including NCNN Vulkan), and is actively maintained.
+
 ## Install
 
 Download pre-built binaries and model files from [releases](https://github.com/Nlzy/vapoursynth-waifu2x-ncnn-vulkan/releases). Uncompress and put into VapourSynth plugin folder.
